@@ -36,6 +36,8 @@ ap.add_argument("--prefix", type=str, default="action_head.model.")
 ap.add_argument("--order", type=str, default="4,1")
 ap.add_argument("--dp_steps", type=int, default=10)
 ap.add_argument("--zero2", type=int, default=0)
+ap.add_argument("--opt", type=str, default="sgd",
+                choices=["sgd", "adamw_bf16"])
 ap.add_argument("--no_load", type=int, default=0)
 ap.add_argument("--frames_list", type=str, default="")     # 先 SP 后 DP
 args = ap.parse_args()
@@ -143,6 +145,11 @@ class Zero2:
             param.grad = None          # <- 关键：立刻释放，33GB 不会累积
         return hook
 
+    def begin_step(self):
+        """在 forward 之前调用：统计发生在 backward 的 hook 里，
+        所以重置必须在 backward 之前，不能放进 step()（否则会把本步计数清零）。"""
+        self.full = self.partial = 0
+
     @torch.no_grad()
     def step(self, lr):
         for i, p in enumerate(self.ps):
@@ -166,6 +173,59 @@ class Zero2:
                     continue
                 n = p.numel()
                 if sh.numel() != n:
+                    dist.all_gather_into_tensor(p.data.view(-1), sh.to(p.dtype))
+        self.shards.clear()
+
+
+class Zero2AdamW(Zero2):
+    """ZeRO-2 分片 + AdamW。状态 exp_avg / exp_avg_sq 也是 1/P、bf16。
+
+    显存账（16.48B 参数，F=33）：参数 33.0（全量复制）+ 梯度 8.25（1/P）
+    + 状态 16.5（2 × 2B × 1/P）+ 激活 14.65 ≈ 72.4 GB（实测 72.4）。
+    fp32 状态会是 33 GB（总 88.9 GB），放不下。
+    ⚠️ 状态用 bf16 意味二阶矩精度有限，长训练的影响本工作未评估。
+    """
+
+    def __init__(self, params, world, rank, lr, betas=(0.9, 0.999), eps=1e-8, wd=0.01, **kw):
+        super().__init__(params, world, rank)
+        self.lr, self.b1, self.b2, self.eps, self.wd = lr, betas[0], betas[1], eps, wd
+        self.st, self.t = {}, 0
+
+    def state_bytes(self):
+        return sum(s["m"].numel() * s["m"].element_size() * 2 for s in self.st.values())
+
+    @torch.no_grad()
+    def step(self, lr=None):
+        lr = self.lr if lr is None else lr
+        self.t += 1
+        bc1, bc2 = 1 - self.b1 ** self.t, 1 - self.b2 ** self.t
+        for i, p in enumerate(self.ps):
+            sh = self.shards.get(i)
+            if sh is None:
+                continue
+            n = p.numel()
+            m_ = sh.numel() if sh.numel() == n else n // self.world
+            lo = 0 if sh.numel() == n else self.rank * m_
+            s = self.st.get(i)
+            if s is None:
+                s = dict(m=torch.zeros(m_, dtype=torch.bfloat16, device=sh.device),
+                         v=torch.zeros(m_, dtype=torch.bfloat16, device=sh.device))
+                self.st[i] = s
+            g16 = sh.float()[:m_].to(torch.bfloat16)
+            s["m"].mul_(self.b1).add_(g16, alpha=1 - self.b1)
+            s["v"].mul_(self.b2).addcmul_(g16, g16, value=1 - self.b2)
+            upd = (s["m"].float() / bc1) / ((s["v"].float() / bc2).sqrt() + self.eps)
+            seg = p.data.view(-1)[lo:lo + m_]
+            if self.wd > 0:
+                seg.mul_(1 - lr * self.wd)
+            seg.add_(upd.to(p.dtype), alpha=-lr)
+            sh.copy_(seg)      # 关键：更新后的值写回分片，否则 all_gather 会把梯度当参数
+        if self.world > 1:
+            for i, p in enumerate(self.ps):
+                sh = self.shards.get(i)
+                if sh is None:
+                    continue
+                if sh.numel() != p.numel():
                     dist.all_gather_into_tensor(p.data.view(-1), sh.to(p.dtype))
         self.shards.clear()
 
@@ -208,7 +268,11 @@ class Adafactor:
 
 
 OPT = Adafactor(m.parameters(), lr=args.lr)
-Z2 = Zero2(m.parameters(), world, rank) if args.zero2 else None
+if args.zero2:
+    Z2 = (Zero2AdamW(m.parameters(), world, rank, lr=args.lr) if args.opt == "adamw_bf16"
+          else Zero2(m.parameters(), world, rank))
+else:
+    Z2 = None
 
 _needs_bak = len(args.order.split(",")) > 1
 bak = {k: v.detach().to("cpu", copy=True) for k, v in m.state_dict().items()} if _needs_bak else None
@@ -222,6 +286,8 @@ def train(p, steps):
     hist = []
     for s in range(steps):
         t1 = time.time()
+        if Z2 is not None:
+            Z2.begin_step()          # 必须在 backward 前重置计数器
         out = m(x_in, tt, ta, ctx, seq_len=N, clean_x=x_cl,
                 action=act, state=st, embodiment_id=emb)
         v, a = out
@@ -241,9 +307,10 @@ def train(p, steps):
             lv = float(loss)
             hist.append((lv, float(gn), dt))
             if is0 and (s % 1 == 0):
-                print("[%s step %2d] loss=%.6f %.2fs peak=%.1fGB (z2 full=%d partial=%d)" %
+                _sb = Z2.state_bytes() / 1e9 if hasattr(Z2, "state_bytes") else 0.0
+                print("[%s step %2d] loss=%.6f %.2fs peak=%.1fGB state=%.1fGB (z2 full=%d partial=%d)" %
                       ("SP" if p > 1 else "DP", s, lv, dt,
-                       torch.cuda.max_memory_allocated() / 1e9, Z2.full, Z2.partial), flush=True)
+                       torch.cuda.max_memory_allocated() / 1e9, _sb, Z2.full, Z2.partial), flush=True)
             continue
         if args.clip > 0:
             gn = torch.nn.utils.clip_grad_norm_(m.parameters(), args.clip)

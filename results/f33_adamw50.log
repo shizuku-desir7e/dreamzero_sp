@@ -1,0 +1,95 @@
+[W1020 08:35:29.432838219 socket.cpp:200] [c10d] The hostname of the client socket cannot be retrieved. err=-3
+[W1020 08:35:29.434368826 socket.cpp:200] [c10d] The hostname of the client socket cannot be retrieved. err=-3
+[W1020 08:35:31.998204136 socket.cpp:200] [c10d] The hostname of the client socket cannot be retrieved. err=-3
+[W1020 08:35:31.001582804 socket.cpp:200] [c10d] The hostname of the client socket cannot be retrieved. err=-3
+[W1020 08:35:31.012187821 socket.cpp:200] [c10d] The hostname of the client socket cannot be retrieved. err=-3
+[W1020 08:35:31.013108678 socket.cpp:200] [c10d] The hostname of the client socket cannot be retrieved. err=-3
+[W1020 08:35:31.020735454 socket.cpp:200] [c10d] The hostname of the client socket cannot be retrieved. err=-3
+[W1020 08:35:31.020822381 socket.cpp:200] [c10d] The hostname of the client socket cannot be retrieved. err=-3
+[W1020 08:35:31.021623912 socket.cpp:200] [c10d] The hostname of the client socket cannot be retrieved. err=-3
+[W1020 08:35:31.022405563 socket.cpp:200] [c10d] The hostname of the client socket cannot be retrieved. err=-3
+[load] 588s
+/HOME/nsccgz_ywang/nsccgz_ywang_wzh/HDD_POOL/zhengmenghan/lightningrl_env/lib/python3.12/site-packages/torch/distributed/distributed_c10d.py:4807: UserWarning: No device id is provided via `init_process_group` or `barrier `. Using the current device set by the user. 
+  warnings.warn(  # warn only once
+/HOME/nsccgz_ywang/nsccgz_ywang_wzh/HDD_POOL/zhengmenghan/lightningrl_env/lib/python3.12/site-packages/torch/distributed/distributed_c10d.py:4807: UserWarning: No device id is provided via `init_process_group` or `barrier `. Using the current device set by the user. 
+  warnings.warn(  # warn only once
+/HOME/nsccgz_ywang/nsccgz_ywang_wzh/HDD_POOL/zhengmenghan/lightningrl_env/lib/python3.12/site-packages/torch/distributed/distributed_c10d.py:4807: UserWarning: No device id is provided via `init_process_group` or `barrier `. Using the current device set by the user. 
+  warnings.warn(  # warn only once
+/HOME/nsccgz_ywang/nsccgz_ywang_wzh/HDD_POOL/zhengmenghan/lightningrl_env/lib/python3.12/site-packages/torch/distributed/distributed_c10d.py:4807: UserWarning: No device id is provided via `init_process_group` or `barrier `. Using the current device set by the user. 
+  warnings.warn(  # warn only once
+[rank3]:[W1020 08:45:24.204980790 ProcessGroupNCCL.cpp:5023] [PG ID 0 PG GUID 0 Rank 3]  using GPU 3 as device used by this process is currently unknown. This can potentially cause a hang if this rank to GPU mapping is incorrect. You can specify device_id in init_process_group() to force use of a particular device.
+[rank2]:[W1020 08:45:24.205014522 ProcessGroupNCCL.cpp:5023] [PG ID 0 PG GUID 0 Rank 2]  using GPU 2 as device used by this process is currently unknown. This can potentially cause a hang if this rank to GPU mapping is incorrect. You can specify device_id in init_process_group() to force use of a particular device.
+[rank0]:[W1020 08:45:24.205052577 ProcessGroupNCCL.cpp:5023] [PG ID 0 PG GUID 0 Rank 0]  using GPU 0 as device used by this process is currently unknown. This can potentially cause a hang if this rank to GPU mapping is incorrect. You can specify device_id in init_process_group() to force use of a particular device.
+[rank1]:[W1020 08:45:24.205116936 ProcessGroupNCCL.cpp:5023] [PG ID 0 PG GUID 0 Rank 1]  using GPU 1 as device used by this process is currently unknown. This can potentially cause a hang if this rank to GPU mapping is incorrect. You can specify device_id in init_process_group() to force use of a particular device.
+/XYAIFS00/HDD_POOL/nsccgz_ywang/nsccgz_ywang_wzh/zhengmenghan/dreamzero_sp/train_real.py:302: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:835.)
+  lv = float(loss)
+/XYAIFS00/HDD_POOL/nsccgz_ywang/nsccgz_ywang_wzh/zhengmenghan/dreamzero_sp/train_real.py:302: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:835.)
+  lv = float(loss)
+/XYAIFS00/HDD_POOL/nsccgz_ywang/nsccgz_ywang_wzh/zhengmenghan/dreamzero_sp/train_real.py:302: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:835.)
+  lv = float(loss)
+/XYAIFS00/HDD_POOL/nsccgz_ywang/nsccgz_ywang_wzh/zhengmenghan/dreamzero_sp/train_real.py:302: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:835.)
+  lv = float(loss)
+[SP step  0] loss=1.069300 69.05s peak=58.0GB state=16.5GB (z2 full=0 partial=0)
+[SP step  1] loss=1.033475 21.47s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step  2] loss=2.605961 20.99s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step  3] loss=1.120580 21.25s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step  4] loss=1.123947 21.04s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step  5] loss=0.967110 21.35s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step  6] loss=0.852518 21.12s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step  7] loss=0.908441 21.00s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step  8] loss=0.734707 21.02s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step  9] loss=0.747729 21.22s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 10] loss=0.706051 21.04s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 11] loss=0.660063 21.19s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 12] loss=0.662995 20.87s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 13] loss=0.654938 21.06s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 14] loss=0.631264 21.40s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 15] loss=0.623424 20.73s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 16] loss=0.623159 21.24s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 17] loss=0.620724 21.70s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 18] loss=0.613577 21.07s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 19] loss=0.604640 21.38s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 20] loss=0.601990 21.73s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 21] loss=0.604218 21.55s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 22] loss=0.603892 21.26s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 23] loss=0.599119 21.11s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 24] loss=0.594536 21.62s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 25] loss=0.594460 21.22s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 26] loss=0.596004 21.06s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 27] loss=0.595791 21.42s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 28] loss=0.593707 21.43s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 29] loss=0.591284 22.15s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 30] loss=0.590644 21.41s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 31] loss=0.591109 21.00s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 32] loss=0.591231 21.26s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 33] loss=0.590620 21.32s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 34] loss=0.589574 21.28s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 35] loss=0.588801 21.11s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 36] loss=0.588578 21.08s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 37] loss=0.588539 21.36s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 38] loss=0.588394 21.05s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 39] loss=0.588138 21.27s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 40] loss=0.587794 21.06s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 41] loss=0.587457 21.39s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 42] loss=0.587123 21.07s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 43] loss=0.586847 21.05s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 44] loss=0.586688 21.38s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 45] loss=0.586643 21.03s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 46] loss=0.586571 21.15s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 47] loss=0.586433 21.17s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 48] loss=0.586262 21.32s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP step 49] loss=0.586052 21.26s peak=72.3GB state=16.5GB (z2 full=0 partial=0)
+[SP] first=1.069300 last=0.586052 降幅=45.19% peak=72.3GB nan=0
+     loss 轨迹: 1.0693 0.7061 0.6020 0.5906 0.5878
+/HOME/nsccgz_ywang/nsccgz_ywang_wzh/HDD_POOL/zhengmenghan/lightningrl_env/lib/python3.12/site-packages/torch/distributed/distributed_c10d.py:4807: UserWarning: No device id is provided via `init_process_group` or `barrier `. Using the current device set by the user. 
+  warnings.warn(  # warn only once
+/HOME/nsccgz_ywang/nsccgz_ywang_wzh/HDD_POOL/zhengmenghan/lightningrl_env/lib/python3.12/site-packages/torch/distributed/distributed_c10d.py:4807: UserWarning: No device id is provided via `init_process_group` or `barrier `. Using the current device set by the user. 
+  warnings.warn(  # warn only once
+/HOME/nsccgz_ywang/nsccgz_ywang_wzh/HDD_POOL/zhengmenghan/lightningrl_env/lib/python3.12/site-packages/torch/distributed/distributed_c10d.py:4807: UserWarning: No device id is provided via `init_process_group` or `barrier `. Using the current device set by the user. 
+  warnings.warn(  # warn only once
+/HOME/nsccgz_ywang/nsccgz_ywang_wzh/HDD_POOL/zhengmenghan/lightningrl_env/lib/python3.12/site-packages/torch/distributed/distributed_c10d.py:4807: UserWarning: No device id is provided via `init_process_group` or `barrier `. Using the current device set by the user. 
+  warnings.warn(  # warn only once

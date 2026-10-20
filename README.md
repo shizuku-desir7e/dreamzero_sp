@@ -99,13 +99,23 @@ python -m torch.distributed.run --nproc_per_node=4 test_sp_ckpt.py \
 # 注意：F=33 需要梯度分片才放得下，见 3.4
 ```
 
-### 3.4 33 帧训练（SP + ZeRO-2）
+### 3.4 33 帧训练（SP + ZeRO-2 + AdamW）★ 主结果
 
 ```bash
+# 50 步完整曲线（真权重，和论文里那张图对应）
+python -m torch.distributed.run --nproc_per_node=4 train_real.py \
+  --frames 33 --steps 50 --lr 1e-4 --zero2 1 --opt adamw_bf16 --order 4
+# 实测：峰值 72.3 GB（状态 16.5 GB），21.0–21.4 s/step
+#       loss 1.0693 → 0.5861（−45.2%），步 20 后收敛，无 NaN
+#       注意 batch 是固定的一个 ⇒ 证明的是「能稳定优化」，不是「在数据上收敛」
+
+# 省显存版（SGD，无优化器状态）：55.9 GB
 python -m torch.distributed.run --nproc_per_node=4 train_real.py \
   --frames 33 --steps 4 --lr 4e-3 --zero2 1 --order 4
 # 期望：peak ≈ 55.9 GB，loss 1.0693 → 0.8993，20.4 s/step
 ```
+
+曲线图 `fig_E_f33_curve.png`，逐步骤数据 `results/f33_adamw_50steps.csv`。
 
 ### 3.5 审稿人攻击的两个对照实验
 
@@ -140,5 +150,8 @@ python -m torch.distributed.run --nproc_per_node=4 offload_baseline.py \
 2. 训练默认 SGD（无状态）。**AdamW 可用**：状态换 bf16 + 1/P 分片 ⇒ 72.4 GB（实测，未 NaN）；
    fp32 状态放不下（88.9 GB）。Adafactor 内存最优但需大 lr。见 `opt_test.py`。
 3. `action=None`（纯视频）分支在 F=17 出 NaN —— **DP 单卡同样 NaN**，属上游问题。
-4. 50 步 loss 曲线是 F=9 + all_reduce 测的；F=33 + ZeRO-2 只跑了 4 步。
+4. **50 步曲线已补到 F=33**（真权重 + SP4 + ZeRO-2 + bf16 状态 AdamW）：1.0693 → 0.5861，
+   峰值 72.3 GB，21.0–21.4 s/step，无 NaN，步 20 后收敛。但 **batch 固定为单一样本**，
+   且 `z0` 是高斯 latent 而非 VAE 编码的真实视频 ⇒ 证明的是优化稳定性与梯度路径正确，
+   不是数据分布上的收敛。优化器状态为 bf16，长训练精度损失未评估；only one lr。
 5. 未做端到端质量评估（FVD / 任务成功率）。
