@@ -22,7 +22,7 @@ dreamzero_sp/
 ├── sp_v5_zerocopy.py         补丁层 3：零复制分段（首帧/body/action 三段均分）
 ├── sp_v6_flat.py             补丁层 4：多段 a2a 合并成一次扁平 all_to_all_single
 │
-├── train_real.py             ★ 训练循环（真权重 + flow-matching + ZeRO-2 + 单步计时）
+├── train_real.py             ★ 训练循环（真权重 + flow-matching + ZeRO-2 + SGD/AdamW）
 ├── zero2_check.py            ★ ZeRO-2 vs all_reduce 的逐元素等价性
 ├── test_sp_grad_small.py     ★ 小模型前向/梯度等价性（4 卡 vs 单卡）
 ├── test_sp_ckpt.py           ★ 显存/步时主表（支持多帧数、多 rank 数）
@@ -147,8 +147,10 @@ python -m torch.distributed.run --nproc_per_node=4 offload_baseline.py \
 ## 5. 已知限制
 
 1. 只测到 P=4（本机 4 卡），P=8 的拐点未测。
-2. 训练默认 SGD（无状态）。**AdamW 可用**：状态换 bf16 + 1/P 分片 ⇒ 72.4 GB（实测，未 NaN）；
-   fp32 状态放不下（88.9 GB）。Adafactor 内存最优但需大 lr。见 `opt_test.py`。
+2. **优化器的默认值仍是 SGD**（`--opt` 缺省 `sgd`，无优化器状态，55.9 GB）。
+   **主结果那张 50 步曲线用的是 `--opt adamw_bf16`**：状态 bf16 + 1/P 分片 ⇒ 72.3 GB（实测）。
+   ⚠️ 跑 `--zero2 1` 时**必须显式带 `--opt adamw_bf16`**，否则会静默用 SGD —— 两者显存差 16.4 GB，
+   loss 曲线也不可比。fp32 状态放不下（88.9 GB）；Adafactor 内存最优但需大 ~100× 的 lr。见 `opt_test.py`。
 3. `action=None`（纯视频）分支在 F=17 出 NaN —— **DP 单卡同样 NaN**，属上游问题。
 4. **50 步曲线已补到 F=33**（真权重 + SP4 + ZeRO-2 + bf16 状态 AdamW）：1.0693 → 0.5861，
    峰值 72.3 GB，21.0–21.4 s/step，无 NaN，步 20 后收敛。但 **batch 固定为单一样本**，
