@@ -3,7 +3,18 @@
 > 目标：把 action-conditioned 视频扩散的官方 33 帧配置塞进 4×A100-80G。
 > 结果：纯 DP 上限 9 帧 → SP=4 + ZeRO-2 达到 33 帧（55.9 GB），同配置加速 2.46×。
 >
-> 完整叙述见 `blog_序列并行.md`；实验原始记录见 `E_结果_2026-10-20.md`。
+> 完整叙述见 `blog_序列并行.md`（工程复盘，按因果链）与 `blog_系统报告.md`（workshop / 系统报告体例）。
+> 实验原始记录见 `E_结果_2026-10-20.md`；设计决策与被证伪的假设见 `SP_设计.md`。
+
+**文档索引**
+
+| 文件 | 体例 | 适合谁读 |
+|---|---|---|
+| `blog_系统报告.md` | workshop / 系统报告 | 想快速判断「这套东西能不能用在我这儿」的人 |
+| `blog_序列并行.md` | 工程复盘 | 想看踩坑细节与因果链的人 |
+| `E_结果_2026-10-20.md` | 实验记录 | 要核对具体数字、配置、失败案例的人 |
+| `SP_设计.md` | 设计日志 | 要看每个决策的依据与被推翻的假设的人 |
+| `E_论文_骨架.md` | 论文骨架 | 要写稿的人（含诚实定位与 limitations） |
 
 ---
 
@@ -35,6 +46,9 @@ dreamzero_sp/
 ├── offload_baseline.py       DP + activation offload 基线（结论：无效）
 ├── ulysses_attn.py           Ulysses attention 单算子：正确性 + 吞吐
 ├── bench_amdahl.py           attention 占单层墙钟的比例
+│
+├── dl_droid.py               真实 DROID 数据加载（mp4 解码 + parquet action + VAE 编码）
+├── train_real_data.py        真实数据训练（替代 train_real.py 的合成 batch）
 │
 ├── shim/diffusers/           40 行的 diffusers 兼容层（避免污染共享环境）
 ├── logs/                     各次运行日志（不进仓库）
