@@ -23,6 +23,9 @@ dreamzero_sp/
 ├── sp_v6_flat.py             补丁层 4：多段 a2a 合并成一次扁平 all_to_all_single
 │
 ├── train_real.py             ★ 训练循环（真权重 + flow-matching + ZeRO-2 + SGD/AdamW）
+├── run_f33_adamw.sh          ★ 主结果：F=33 × 50 步 × AdamW（就是产出那张曲线的脚本）
+├── run_adamw_chk.sh          2 步快速自检：AdamW 接入是否正确（--no_load，约 4 分钟）
+├── run_smoke.sh              1 步冒烟：改完训练循环后先跑这个（--no_load）
 ├── zero2_check.py            ★ ZeRO-2 vs all_reduce 的逐元素等价性
 ├── test_sp_grad_small.py     ★ 小模型前向/梯度等价性（4 卡 vs 单卡）
 ├── test_sp_ckpt.py           ★ 显存/步时主表（支持多帧数、多 rank 数）
@@ -34,14 +37,17 @@ dreamzero_sp/
 ├── bench_amdahl.py           attention 占单层墙钟的比例
 │
 ├── shim/diffusers/           40 行的 diffusers 兼容层（避免污染共享环境）
-├── archive/                  废弃脚本（v1 运行时注入、被证伪的 e2e 测试等）
-├── logs/                     各次运行日志
-└── results/                  结构化结果（按需导出）
+├── logs/                     各次运行日志（不进仓库）
+└── results/                  结构化结果：50 步 CSV + 原始日志
 ```
 
-**`archive/` 里有两个必须知道的东西**：
-- `test_sp_e2e.py` —— 曾报"逐元素 0 误差"，实为**假阳性**（`head` 零初始化，输出恒为 0）。
-- `sp_v5_split.py` —— 中途失败的尝试（`_sp_segs` 索引 bug），留作对照。
+**根目录里有两个"反面教材"，别当可用脚本**：
+- `test_sp_e2e.py` —— 曾报"逐元素 0 误差"，实为**假阳性**（模型 `head` 零初始化，输出恒为 0）。
+  真正的等价性检查用 `test_sp_grad_small.py`（它会先断言参考输出非零）。
+- `sp_v5_split.py` —— 中途失败的尝试（`_sp_segs` 索引错位），留作对照；后来的零复制实现是 `sp_v5_zerocopy.py`。
+
+其余历史脚本（`probe_step*.py`、`sp_patch.py`、`sp_v2_patch.py`、`test_sp_mem*.py`、`test_sp_exact.py`）
+是探索阶段的产物，已被 `test_sp_grad_small.py` / `test_sp_ckpt.py` 取代，保留仅为可追溯。
 
 ---
 
@@ -100,6 +106,12 @@ python -m torch.distributed.run --nproc_per_node=4 test_sp_ckpt.py \
 ```
 
 ### 3.4 33 帧训练（SP + ZeRO-2 + AdamW）★ 主结果
+
+最省事：**直接用产出这张曲线的那个脚本**（命令逐字一致）
+
+```bash
+bash run_f33_adamw.sh          # 内部就是下面这条
+```
 
 ```bash
 # 50 步完整曲线（真权重，和论文里那张图对应）
