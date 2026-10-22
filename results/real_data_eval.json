@@ -1,0 +1,27 @@
+{
+ "n_clips": 12,
+ "frames": 33,
+ "holdout_loss": 0.2318341601639986,
+ "holdout_loss_per_clip": [
+  0.356958,
+  0.363111,
+  0.276617,
+  0.264215,
+  0.283695,
+  0.188177,
+  0.126349,
+  0.223652,
+  0.231696,
+  0.170586,
+  0.176144,
+  0.120811
+ ],
+ "psnr_vae": 43.150871912638344,
+ "ssim_vae": 0.9746293971935908,
+ "psnr_1step": 29.427316665649414,
+ "ssim_1step": 0.7887470871210098,
+ "note": "psnr/ssim_vae \u662f VAE \u4e0a\u9650\uff0c\u4e0d\u662f\u6a21\u578b\u8d28\u91cf\uff1bpsnr/ssim_1step \u624d\u662f\u6a21\u578b\u6307\u6807",
+ "fvd_r3d18": 45.11079619316726,
+ "fvd_note": "R3D-18/Kinetics-400 \u7279\u5f81\u4e0a\u7684 Frechet \u8ddd\u79bb\uff0c\u4e0d\u662f I3D-FVD\uff0c\u4e0d\u53ef\u4e0e\u6587\u732e\u6570\u5b57\u6a2a\u5411\u6bd4\u8f83",
+ "ckpt": "results/real_data_500_adagrad.pt"
+}

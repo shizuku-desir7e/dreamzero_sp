@@ -90,8 +90,9 @@ def r3d_features(net, clips, dev, n_frames=16):
     if x.shape[-1] != 112:                          # 空间缩到 112（R3D 常用）
         x = Fn.interpolate(x, size=(n_frames, 112, 112), mode="trilinear", align_corners=False)
     x = ((x + 1) / 2).clamp(0, 1)
-    mean = torch.tensor([0.43216, 0.394666, 0.37645], device=dev).view(1, 3, 1, 1, 1)
-    std = torch.tensor([0.22803, 0.22145, 0.216989], device=dev).view(1, 3, 1, 1, 1)
+    # 注意：此处 x 还在 CPU 上（下面才 .to(dev)），归一化常数必须跟着 x 的设备走
+    mean = torch.tensor([0.43216, 0.394666, 0.37645], device=x.device).view(1, 3, 1, 1, 1)
+    std = torch.tensor([0.22803, 0.22145, 0.216989], device=x.device).view(1, 3, 1, 1, 1)
     x = ((x - mean) / std).to(torch.float32)
     feats = []
     for i in range(0, x.shape[0], 4):               # 分块，避免爆显存
@@ -118,7 +119,7 @@ def frechet(fa, fb, eps=1e-6):
 # ------------------------------------------------------------------ 一次前向
 def make_holdout_batch(ds, i, F_, dev, seed):
     """与训练脚本同构的 batch，但数据来自留出集。全部 rank 必须一致。"""
-    z0, act, st = model_latent(ds, i, dev)
+    z0, act, st = model_latent(ds, i, dev, F_)
     N = F_ * FSL
     NB = (F_ - 1) // 2
     g = torch.Generator().manual_seed(seed * 7919 + i)
@@ -141,7 +142,7 @@ def make_holdout_batch(ds, i, F_, dev, seed):
         emb=torch.zeros(1, dtype=torch.long, device=dev))
 
 
-def model_latent(ds, i, dev):
+def model_latent(ds, i, dev, F_):
     """ds[i] → VAE 编码。注意 dl_droid.encode 的入参是 [3,T,H,W]，它内部自己 unsqueeze。
 
     返回 z [1,16,F,40,88] / act [NB*24,32] / state [NB,64]
@@ -150,7 +151,11 @@ def model_latent(ds, i, dev):
     with torch.no_grad():
         z = dl_droid.encode(_VAE, px.to(dev))         # → [1,16,F,40,88]
     assert tuple(z.shape) == (1, 16, F_, H, W), z.shape
-    return z.to(dtype=torch.bfloat16), act.to(dev), stt.to(dev)
+    # action/state 在 dl_droid.raw() 里是 float32；模型是 bf16，必须转
+    # （训练脚本在 precompute 里转了，评测漏掉会报 expected Float but found BFloat16）
+    return (z.to(dtype=torch.bfloat16),
+            act.to(dev, dtype=torch.bfloat16),
+            stt.to(dev, dtype=torch.bfloat16))
 
 
 def _to_bcthw(x):
@@ -182,7 +187,12 @@ def _eval_core(m, vae, ds, F_, dev, args, log, rank=0, world=1):
     real_clips, pred_clips = [], []
     for i in range(n):
         b = make_holdout_batch(ds, i, F_, dev, args.seed)
-        with torch.no_grad():
+        # 必须是 enable_grad 而不是 no_grad：
+        # 模型里 checkpointing 分支的条件是 `torch.is_grad_enabled() and self.gradient_checkpointing`
+        # （见 wan_video_dit_action_casual_chunk.py:2382）。用 no_grad 会走非 ckpt 分支，
+        # 既触发上游「block 返回 tuple 未解包」的 bug，又让 33 帧激活直接爆显存。
+        # 参数已 requires_grad=False，所以不会建图、不会有梯度。
+        with torch.enable_grad():
             out = m(b["x_in"], b["tt"], b["ta"], b["ctx"], seq_len=b["N"],
                     clean_x=b["x_cl"], action=b["act"], state=b["st"],
                     embodiment_id=b["emb"])
