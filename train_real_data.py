@@ -39,6 +39,8 @@ ap.add_argument("--holdout", type=str, default="15,16,17")
 ap.add_argument("--log_every", type=int, default=10)
 ap.add_argument("--out", type=str, default=Z + "/dreamzero_sp/results/real_data_train.json")
 ap.add_argument("--eval_after", type=int, default=1)
+ap.add_argument("--save_ckpt", type=str, default="",
+                help="训练结束把状态字典存到这个路径（rank0 单独写）。空=不存。")
 ap.add_argument("--eval_out", type=str, default=Z + "/dreamzero_sp/results/real_data_eval.json")
 ap.add_argument("--fvd_clips", type=int, default=10)
 ap.add_argument("--ode_steps", type=int, default=8)
@@ -264,6 +266,18 @@ for s in range(args.steps):
     if lv != lv:
         print("[FATAL] NaN at step %d" % s, flush=True)
         break
+
+# ---------------- 存盘（评测脚本要能重新加载，否则 3 小时白跑） ----------------
+if args.save_ckpt:
+    dist.barrier()
+    if is0:
+        _sd = {k: v.detach().to("cpu", copy=True) for k, v in m.state_dict().items()}
+        os.makedirs(os.path.dirname(args.save_ckpt) or ".", exist_ok=True)
+        torch.save(_sd, args.save_ckpt)
+        print("[save] %s  (%.2f GB)" % (args.save_ckpt,
+              os.path.getsize(args.save_ckpt) / 1e9), flush=True)
+        del _sd
+    dist.barrier()
 
 peak = torch.cuda.max_memory_allocated() / 1e9
 res = dict(
