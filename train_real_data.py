@@ -33,7 +33,8 @@ ap.add_argument("--ckpt_dir", type=str, default=Z + "/model")
 ap.add_argument("--prefix", type=str, default="action_head.model.")
 ap.add_argument("--order", type=str, default="4")
 ap.add_argument("--zero2", type=int, default=1)
-ap.add_argument("--opt", type=str, default="adamw_bf16", choices=["sgd", "adamw_bf16"])
+ap.add_argument("--opt", type=str, default="adamw_bf16",
+                choices=["sgd", "adamw_bf16", "adagrad_bf16"])
 ap.add_argument("--no_load", type=int, default=0)
 ap.add_argument("--holdout", type=str, default="15,16,17")
 ap.add_argument("--log_every", type=int, default=10)
@@ -109,7 +110,10 @@ def precompute():
         px, act, st = train_ds[i]
         z = dl_droid.encode(vae, px.to(dev))
         assert tuple(z.shape) == (1, 16, F_, H, W), z.shape
-        _zcache[i] = (z, act.to(dev, dtype=torch.bfloat16), st.to(dev, dtype=torch.bfloat16))
+        # 放 CPU（pin）而不是 GPU：140 个窗口在 GPU 上占 0.52 GB，
+        # 而这张卡被别人占了 9.9 GiB，我们只差 ~0.1 GiB 就能过。每步搬运 3.7 MB，可忽略。
+        _zcache[i] = (z.to("cpu"), act.to("cpu", dtype=torch.bfloat16),
+                      st.to("cpu", dtype=torch.bfloat16))
         del px
         if is0 and (i + 1) % 20 == 0:
             print("[precompute] %d/%d %.0fs" % (i + 1, len(train_ds), time.time() - t), flush=True)
@@ -117,7 +121,10 @@ def precompute():
 
 
 def latent_for(i):
-    return _zcache[i]
+    z, act, st = _zcache[i]
+    return (z.to(dev, non_blocking=True),
+            act.to(dev, non_blocking=True),
+            st.to(dev, non_blocking=True))
 
 
 def make_batch(step):
@@ -177,6 +184,53 @@ class Zero2:
         self.full = self.partial = 0
 
 
+class Zero2AdaGrad(Zero2):
+    """ZeRO-2 分片 + AdaGrad（只存二阶矩 v，bf16，1/P ⇒ 8.25 GB）。
+
+    为什么用它：33 帧 + AdamW 需要 71.2 GB，而这张卡被别人占了 9.92 GiB，
+    我们只有 69.3 GiB 可用，差 74 MiB。AdaGrad 把状态从 16.5 GB 降到 8.25 GB，
+    换来 6 GiB 余量，代价是优化器从 AdamW 换成 AdaGrad（曲线不可与 AdamW 那条直接比）。
+    """
+
+    def __init__(self, params, world, rank, lr, eps=1e-8, **kw):
+        super().__init__(params, world, rank)
+        self.lr, self.eps = lr, eps
+        self.v, self.t = {}, 0
+
+    def state_bytes(self):
+        return sum(x.numel() * x.element_size() for x in self.v.values())
+
+    @torch.no_grad()
+    def step(self, lr=None):
+        lr = self.lr if lr is None else lr
+        self.t += 1
+        for i, p in enumerate(self.ps):
+            sh = self.shards.get(i)
+            if sh is None:
+                continue
+            n = p.numel()
+            m_ = sh.numel() if sh.numel() == n else n // self.world
+            lo = 0 if sh.numel() == n else self.rank * m_
+            g16 = sh.float()[:m_].to(torch.bfloat16)
+            v = self.v.get(i)
+            if v is None:
+                v = torch.zeros(m_, dtype=torch.bfloat16, device=sh.device)
+                self.v[i] = v
+            v.addcmul_(g16, g16, value=1.0)
+            upd = g16.float() / (v.float().sqrt() + self.eps)
+            seg = p.data.view(-1)[lo:lo + m_]
+            seg.add_(upd.to(p.dtype), alpha=-lr)
+            sh.copy_(seg)
+        if self.world > 1:
+            for i, p in enumerate(self.ps):
+                sh = self.shards.get(i)
+                if sh is None:
+                    continue
+                if sh.numel() != p.numel():
+                    dist.all_gather_into_tensor(p.data.view(-1), sh.to(p.dtype))
+        self.shards.clear()
+
+
 class Zero2AdamW(Zero2):
     def __init__(self, params, world, rank, lr, betas=(0.9, 0.999), eps=1e-8, wd=0.01, **kw):
         super().__init__(params, world, rank)
@@ -223,8 +277,12 @@ class Zero2AdamW(Zero2):
 
 
 if args.zero2:
-    Z2 = (Zero2AdamW(m.parameters(), world, rank, lr=args.lr) if args.opt == "adamw_bf16"
-          else Zero2(m.parameters(), world, rank))
+    if args.opt == "adamw_bf16":
+        Z2 = Zero2AdamW(m.parameters(), world, rank, lr=args.lr)
+    elif args.opt == "adagrad_bf16":
+        Z2 = Zero2AdaGrad(m.parameters(), world, rank, lr=args.lr)
+    else:
+        Z2 = Zero2(m.parameters(), world, rank)
 else:
     Z2 = None
 
