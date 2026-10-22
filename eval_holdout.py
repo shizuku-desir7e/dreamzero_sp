@@ -173,7 +173,7 @@ _VAE = None
 def _eval_core(m, vae, ds, F_, dev, args, log, rank=0, world=1):
     global _VAE
     _VAE = vae
-    n = min(args.clips, len(ds))
+    n = len(ds) if args.clips <= 0 else min(args.clips, len(ds))
     log("[eval] holdout windows=%d (取前 %d), F=%d" % (len(ds), n, F_))
 
     net = None
@@ -184,7 +184,8 @@ def _eval_core(m, vae, ds, F_, dev, args, log, rank=0, world=1):
         log("[eval] R3D-18 不可用（%s），跳过 fvd_r3d18" % str(e)[:120])
 
     losses, pv, sv, p1, s1 = [], [], [], [], []
-    real_clips, pred_clips = [], []
+    real_clips, pred_clips, vae_clips = [], [], []
+    per_ep = {}
     for i in range(n):
         b = make_holdout_batch(ds, i, F_, dev, args.seed)
         # 必须是 enable_grad 而不是 no_grad：
@@ -197,7 +198,8 @@ def _eval_core(m, vae, ds, F_, dev, args, log, rank=0, world=1):
                     clean_x=b["x_cl"], action=b["act"], state=b["st"],
                     embodiment_id=b["emb"])
             v, a = out
-            losses.append(float((v.float() - b["tgt"]).pow(2).mean()))
+            last_loss = float((v.float() - b["tgt"]).pow(2).mean())
+            losses.append(last_loss)
 
             # 单步去噪：z_t = (1-t) z0 + t eps, v* = eps - z0 ⇒ z0 = z_t - t v
             t = b["t01"].view(1, 1, F_, 1, 1)
@@ -209,7 +211,11 @@ def _eval_core(m, vae, ds, F_, dev, args, log, rank=0, world=1):
             px_pred = _to_bcthw(dl_droid.decode(vae, z_hat.to(torch.bfloat16)))
             px_vae = _to_bcthw(dl_droid.decode(vae, z0.to(torch.bfloat16)))
 
+            _ep = int(ds.items[i][0]["episode"])
+            per_ep.setdefault(_ep, []).append(last_loss)
             pv.append(psnr(px_real, px_vae)); sv.append(ssim(px_real[0], px_vae[0]))
+            if net is not None and len(vae_clips) < args.fvd_clips:
+                vae_clips.append(px_vae.cpu())
             p1.append(psnr(px_real, px_pred)); s1.append(ssim(px_real[0], px_pred[0]))
             if net is not None and len(real_clips) < args.fvd_clips:
                 real_clips.append(px_real.cpu())
@@ -225,11 +231,17 @@ def _eval_core(m, vae, ds, F_, dev, args, log, rank=0, world=1):
         psnr_vae=float(np.mean(pv)), ssim_vae=float(np.mean(sv)),
         psnr_1step=float(np.mean(p1)), ssim_1step=float(np.mean(s1)),
         note="psnr/ssim_vae 是 VAE 上限，不是模型质量；psnr/ssim_1step 才是模型指标",
+        per_episode={str(k): dict(n=len(x), loss=float(np.mean(x))) for k, x in sorted(per_ep.items())},
+        episodes_covered=sorted(per_ep.keys()),
     )
     if net is not None and len(real_clips) >= 2:
         fa = r3d_features(net, torch.cat(real_clips, 0), dev)
         fb = r3d_features(net, torch.cat(pred_clips, 0), dev)
         ev["fvd_r3d18"] = frechet(fa, fb)
+        if len(vae_clips) >= 2:
+            fc = r3d_features(net, torch.cat(vae_clips, 0), dev)
+            ev["fvd_r3d18_vae_floor"] = frechet(fa, fc)
+            ev["fvd_floor_note"] = "同指标下『真实 vs VAE往返』的距离，作为地板"
         ev["fvd_note"] = ("R3D-18/Kinetics-400 特征上的 Frechet 距离，"
                           "不是 I3D-FVD，不可与文献数字横向比较")
     return ev
@@ -240,7 +252,7 @@ def run_eval(m, vae, F_, dev, args, log=print):
     hold = [int(x) for x in str(args.holdout).split(",")]
     eps = dl_droid.list_episodes()
     ho = [e for e in eps if e["episode"] in hold]
-    ds = dl_droid.DroidWindows(ho, F_lat=F_, stats=dl_droid.Stats(), cache=False)
+    ds = dl_droid.DroidWindows(ho, F_lat=F_, stats=dl_droid.Stats(), cache=True)
     return _eval_core(m, vae, ds, F_, dev, args, log)
 
 
@@ -278,13 +290,38 @@ def main():
         p.requires_grad_(False)
 
     t0 = time.time()
-    sd = torch.load(args.ckpt, map_location="cpu")
-    miss = m.load_state_dict(sd, strict=False)
-    if is0:
-        print("[load] %s  %.0fs  missing=%d unexpected=%d" %
-              (args.ckpt, time.time() - t0, len(miss.missing_keys), len(miss.unexpected_keys)),
-              flush=True)
-    del sd
+    if args.ckpt == "base":
+        # 未微调基线：直接读 $Z/model 的原始 DiT 权重（与训练脚本同一套键名/前缀）
+        import json as _json
+        from safetensors.torch import load_file
+        _idx = _json.load(open(os.path.join(Z, "model", "model.safetensors.index.json")))
+        _pmap, _bmap = dict(m.named_parameters()), dict(m.named_buffers())
+        _n, _mm = 0, 0
+        for _sh in sorted(set(_idx["weight_map"].values())):
+            _sd = load_file(os.path.join(Z, "model", _sh), device=dev)
+            for _k, _v in _sd.items():
+                if not _k.startswith("action_head.model."):
+                    continue
+                _kk = _k[len("action_head.model."):]
+                # 不能写 pmap.get(k) or bmap.get(k)：Tensor 的布尔值是歧义操作
+                _t = _pmap[_kk] if _kk in _pmap else _bmap.get(_kk)
+                if _t is not None and _t.shape == _v.shape:
+                    _t.data.copy_(_v); _n += 1
+                else:
+                    _mm += 1
+            del _sd
+            torch.cuda.empty_cache()
+        if is0:
+            print("[load] base(未微调) %.0fs  拷入 %d 张量, 跳过 %d" %
+                  (time.time() - t0, _n, _mm), flush=True)
+    else:
+        sd = torch.load(args.ckpt, map_location="cpu")
+        miss = m.load_state_dict(sd, strict=False)
+        if is0:
+            print("[load] %s  %.0fs  missing=%d unexpected=%d" %
+                  (args.ckpt, time.time() - t0, len(miss.missing_keys), len(miss.unexpected_keys)),
+                  flush=True)
+        del sd
 
     vae = dl_droid.load_vae(ckpt_dir=Z + "/model", dev=dev)
     DZMOD.set_sp_state(group=dist.group.WORLD, world=world, rank=rank)
@@ -292,7 +329,7 @@ def main():
     hold = [int(x) for x in args.holdout.split(",")]
     eps = dl_droid.list_episodes()
     ho = [e for e in eps if e["episode"] in hold]
-    ds = dl_droid.DroidWindows(ho, F_lat=F_, stats=dl_droid.Stats(), cache=False)
+    ds = dl_droid.DroidWindows(ho, F_lat=F_, stats=dl_droid.Stats(), cache=True)
 
     ev = _eval_core(m, vae, ds, F_, dev, args, print, rank=rank, world=world)
     ev["ckpt"] = args.ckpt
